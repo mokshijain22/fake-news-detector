@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FakeNewsDetector v2.3</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=JetBrains+Mono:wght@300;400;500;700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+<style>
+/* ── Reset & Variables ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink:        #0d0d0d;
+  --paper:      #f5f0e8;
+  --cream:      #ede8dc;
+  --red:        #c0392b;
+  --green:      #1a7a4a;
+  --red-dim:    rgba(192,57,43,0.12);
+  --green-dim:  rgba(26,122,74,0.12);
+  --gold:       #b8973a;
+  --muted:      #7a7468;
+  --rule:       #ccc5b5;
+  --mono:       'JetBrains Mono', monospace;
+  --serif:      'Playfair Display', Georgia, serif;
+  --body-serif: 'Libre Baskerville', Georgia, serif;
+  --shadow:     0 2px 20px rgba(0,0,0,0.1);
+  --shadow-lg:  0 8px 40px rgba(0,0,0,0.18);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--body-serif);
+  font-size: 15px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 1000; opacity: 0.5;
+}
+
+/* ── Masthead ──────────────────────────────────────────────────────────── */
+.masthead {
+  background: var(--paper);
+  color: var(--ink);
+  text-align: center;
+  padding: 28px 24px 20px;
+  border-bottom: 3px double var(--ink);
+  position: relative;
+  overflow: hidden;
+}
+.masthead::after {
+  content: '';
+  position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
+  background: repeating-linear-gradient(90deg, var(--ink) 0, var(--ink) 4px, transparent 4px, transparent 8px);
+}
+.masthead-rule {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.masthead h1 {
+  font-family: var(--serif);
+  font-size: clamp(32px, 6vw, 64px);
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1;
+  color: var(--ink);
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.08);
+}
+.masthead h1 span { color: var(--red); }
+.masthead-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  margin-top: 8px;
+  text-transform: uppercase;
+}
+
+/* ── Stats Bar ─────────────────────────────────────────────────────────── */
+.stats-bar {
+  background: var(--ink);
+  border-bottom: 1px solid #222;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.stats-bar::-webkit-scrollbar { display: none; }
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 28px;
+  border-right: 1px solid #2a2a2a;
+  flex-shrink: 0;
+  min-width: 110px;
+}
+.stat-item:first-child { border-left: 1px solid #2a2a2a; }
+.stat-val {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1;
+}
+.stat-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.stat-pulse { animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+/* ── Layout ────────────────────────────────────────────────────────────── */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 0;
+  min-height: calc(100vh - 160px);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ── Main Panel ────────────────────────────────────────────────────────── */
+.main-panel {
+  border-right: 1px solid #1e1e1e;
+  padding: 32px 36px;
+}
+
+/* ── Input Section ─────────────────────────────────────────────────────── */
+.section-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #222;
+}
+
+/* ── Mode Tabs ─────────────────────────────────────────────────────────── */
+.mode-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.mode-tab {
+  flex: 1;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-right: 1px solid #2a2a2a;
+}
+.mode-tab:last-child { border-right: none; }
+.mode-tab:hover { background: #161616; color: var(--paper); }
+.mode-tab.active {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* ── Input Areas ───────────────────────────────────────────────────────── */
+.input-area { display: none; }
+.input-area.active { display: block; }
+
+textarea {
+  width: 100%;
+  min-height: 200px;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: var(--paper);
+  font-family: var(--body-serif);
+  font-size: 14px;
+  line-height: 1.7;
+  padding: 18px 20px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+textarea::placeholder { color: #444; font-style: italic; }
+textarea:focus { border-color: #444; }
+
+.char-counter {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  text-align: right;
+  margin-top: 6px;
+}
+.char-counter.warn { color: var(--gold); }
+.char-counter.error { color: var(--red); }
+
+.url-input-wrap { display: flex; gap: 10px; }
+.url-input {
+  flex: 1;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 14px 16px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.url-input::placeholder { color: #444; }
+.url-input:focus { border-color: #444; }
+
+.file-drop {
+  border: 2px dashed #2a2a2a;
+  border-radius: 4px;
+  padding: 40px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+.file-drop:hover, .file-drop.drag-over { border-color: var(--gold); background: rgba(184,151,58,0.04); }
+.file-drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.file-drop-icon { font-size: 32px; margin-bottom: 10px; }
+.file-drop-text { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.file-drop-name { font-family: var(--mono); font-size: 12px; color: var(--gold); margin-top: 8px; }
+
+.batch-info {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+
+/* ── Action Button ─────────────────────────────────────────────────────── */
+.action-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+  align-items: center;
+}
+.btn-analyze {
+  flex: 1;
+  padding: 14px 28px;
+  background: var(--paper);
+  color: var(--ink);
+  border: none;
+  border-radius: 4px;
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.btn-analyze::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--red);
+  transform: translateX(-101%);
+  transition: transform 0.25s ease;
+}
+.btn-analyze:hover::before { transform: translateX(0); }
+.btn-analyze:hover { color: white; }
+.btn-analyze span { position: relative; z-index: 1; }
+.btn-analyze:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-analyze:disabled::before { display: none; }
+
+.btn-clear {
+  padding: 14px 20px;
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-clear:hover { border-color: #444; color: var(--paper); }
+
+/* ── Loading State ─────────────────────────────────────────────────────── */
+.loading-bar {
+  display: none;
+  height: 2px;
+  background: #1a1a1a;
+  border-radius: 2px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+.loading-bar.active { display: block; }
+.loading-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--red), var(--gold));
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+  border-radius: 2px;
+}
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+.loading-text {
+  display: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 10px;
+  animation: blink 1s ease-in-out infinite;
+}
+.loading-text.active { display: block; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ── Result Section ────────────────────────────────────────────────────── */
+.result-section {
+  margin-top: 40px;
+  display: none;
+}
+.result-section.visible { display: block; animation: fadeUp 0.4s ease forwards; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+.verdict-banner {
+  padding: 28px 32px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  position: relative;
+  overflow: hidden;
+}
+.verdict-banner.fake    { background: var(--red-dim);   border: 1px solid rgba(192,57,43,0.3); }
+.verdict-banner.real    { background: var(--green-dim); border: 1px solid rgba(26,122,74,0.3); }
+.verdict-banner.uncertain { background: rgba(184,151,58,0.08); border: 1px solid rgba(184,151,58,0.25); }
+.verdict-banner.notnews { background: rgba(122,116,104,0.1); border: 1px solid rgba(122,116,104,0.25); }
+
+.verdict-label-wrap { flex: 1; }
+.verdict-label {
+  font-family: var(--serif);
+  font-size: clamp(36px, 7vw, 64px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -2px;
+}
+.verdict-banner.fake      .verdict-label { color: var(--red); }
+.verdict-banner.real      .verdict-label { color: var(--green); }
+.verdict-banner.uncertain .verdict-label { color: var(--gold); }
+.verdict-banner.notnews   .verdict-label { color: var(--muted); }
+
+.verdict-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+  line-height: 1.8;
+}
+
+/* ── Confidence Gauge ──────────────────────────────────────────────────── */
+.gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.gauge { width: 100px; height: 100px; position: relative; }
+.gauge svg { transform: rotate(-90deg); }
+.gauge-bg   { fill: none; stroke: #2a2a2a; stroke-width: 8; }
+.gauge-fill { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dasharray 1s ease; }
+.gauge-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.gauge-pct { font-family: var(--mono); font-size: 18px; font-weight: 700; line-height: 1; }
+.gauge-sublabel {
+  font-family: var(--mono); font-size: 8px; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--muted); margin-top: 2px;
+}
+
+/* ── Prob Bars ─────────────────────────────────────────────────────────── */
+.prob-bars { margin-top: 20px; display: flex; gap: 16px; }
+.prob-bar-wrap { flex: 1; }
+.prob-bar-label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+  display: flex; justify-content: space-between;
+}
+.prob-bar-track { height: 6px; background: #1a1a1a; border-radius: 3px; overflow: hidden; }
+.prob-bar-fill { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+.prob-bar-fill.real { background: var(--green); }
+.prob-bar-fill.fake { background: var(--red); }
+
+/* ── Style Signals ─────────────────────────────────────────────────────── */
+.style-signals {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.signal-chip { background: #111; border: 1px solid #222; border-radius: 4px; padding: 10px 12px; text-align: center; }
+.signal-val  { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--gold); }
+.signal-name { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
+
+/* ── Summary & Explanation Cards ──────────────────────────────────────── */
+.info-cards {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.info-card {
+  background: #0d0d0d;
+  border: 1px solid #1e1e1e;
+  border-radius: 4px;
+  padding: 18px 20px;
+  animation: fadeUp 0.5s ease forwards;
+}
+.info-card-header {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.info-card-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #1e1e1e;
+}
+.info-card.summary  { border-left: 2px solid var(--gold); }
+.info-card.explanation { border-left: 2px solid #2a2a2a; }
+.verdict-banner.fake   ~ .info-cards .info-card.explanation { border-left-color: var(--red); }
+.verdict-banner.real   ~ .info-cards .info-card.explanation { border-left-color: var(--green); }
+
+.info-card-body {
+  font-family: var(--body-serif);
+  font-size: 13.5px;
+  line-height: 1.85;
+}
+.info-card.summary     .info-card-body { color: #bbb; font-style: italic; }
+.info-card.explanation .info-card-body { color: #888; }
+
+/* ── SHAP Plot ─────────────────────────────────────────────────────────── */
+.shap-section { margin-top: 28px; }
+.shap-section img { width: 100%; border-radius: 4px; border: 1px solid #1e1e1e; background: white; }
+
+/* ── Batch Results ─────────────────────────────────────────────────────── */
+.batch-results { margin-top: 28px; }
+.batch-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; border: 1px solid #1e1e1e;
+  border-radius: 4px; margin-bottom: 8px;
+  animation: fadeUp 0.3s ease forwards; opacity: 0;
+}
+.batch-row:nth-child(1){animation-delay:0s}
+.batch-row:nth-child(2){animation-delay:0.06s}
+.batch-row:nth-child(3){animation-delay:0.12s}
+.batch-row:nth-child(4){animation-delay:0.18s}
+.batch-row:nth-child(5){animation-delay:0.24s}
+.batch-index   { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 24px; }
+.batch-snippet { flex: 1; font-size: 13px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.batch-verdict { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 4px 10px; border-radius: 3px; }
+.batch-verdict.fake { background: var(--red-dim);   color: var(--red); }
+.batch-verdict.real { background: var(--green-dim); color: var(--green); }
+.batch-conf    { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 50px; text-align: right; }
+
+/* ── Sidebar ───────────────────────────────────────────────────────────── */
+.sidebar { padding: 32px 24px; background: #080808; border-left: 1px solid #1a1a1a; }
+.sidebar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.sidebar-title { font-family: var(--mono); font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); }
+.btn-export {
+  background: transparent; border: 1px solid #2a2a2a; border-radius: 3px;
+  padding: 5px 10px; color: var(--muted); font-family: var(--mono);
+  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+  cursor: pointer; transition: all 0.2s; text-decoration: none; display: inline-block;
+}
+.btn-export:hover { border-color: var(--gold); color: var(--gold); }
+.history-empty { font-family: var(--mono); font-size: 11px; color: #333; text-align: center; padding: 40px 0; line-height: 2; }
+.history-item { padding: 14px 16px; border: 1px solid #1a1a1a; border-radius: 4px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.2s; animation: fadeUp 0.3s ease forwards; }
+.history-item:hover { border-color: #333; }
+.history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.history-verdict { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 1.5px; padding: 3px 8px; border-radius: 3px; }
+.history-verdict.fake      { background: var(--red-dim);   color: var(--red); }
+.history-verdict.real      { background: var(--green-dim); color: var(--green); }
+.history-verdict.uncertain { background: rgba(184,151,58,0.1); color: var(--gold); }
+.history-verdict.notnews   { background: rgba(122,116,104,0.1); color: var(--muted); }
+.history-time    { font-family: var(--mono); font-size: 9px; color: #333; }
+.history-snippet { font-size: 11px; color: #555; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.history-conf    { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 6px; }
+
+/* ── Disclaimer ────────────────────────────────────────────────────────── */
+.disclaimer {
+  margin: 0 36px 28px;
+  padding: 12px 16px;
+  background: rgba(184,151,58,0.05);
+  border: 1px solid rgba(184,151,58,0.15);
+  border-left: 2px solid var(--gold);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #666;
+  line-height: 1.7;
+  letter-spacing: 0.3px;
+}
+.disclaimer strong { color: var(--gold); }
+
+/* ── Error Toast ───────────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 32px; left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #1a1a1a; border: 1px solid #333;
+  border-left: 3px solid var(--red); border-radius: 4px;
+  padding: 14px 20px; font-family: var(--mono); font-size: 12px;
+  color: var(--paper); transition: transform 0.3s ease;
+  z-index: 999; max-width: 400px;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { border-left: none; border-top: 1px solid #1a1a1a; }
+  .main-panel { padding: 24px 20px; }
+  .style-signals { grid-template-columns: repeat(2, 1fr); }
+  .disclaimer { margin: 0 20px 20px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Masthead ──────────────────────────────────────────────────────── -->
+<header class="masthead">
+  <div class="masthead-rule">Est. 2024 · Powered by XGBoost · WELFake + Indian News</div>
+  <h1>FAKE<span>NEWS</span>DETECTOR</h1>
+  <div class="masthead-sub" id="masthead-sub">v2.3 · Loading stats…</div>
+</header>
+
+<!-- ── Stats Bar ─────────────────────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="stat-item"><span class="stat-val" id="stat-accuracy">—</span><span class="stat-label">Accuracy</span></div>
+  <div class="stat-item"><span class="stat-val" id="stat-auc">—</span><span class="stat-label">ROC-AUC</span></div>
+  <div class="stat-item"><span class="stat-val" id="stat-cv">—</span><span class="stat-label">CV Score</span></div>
+  <div class="stat-item"><span class="stat-val" id="stat-features">—</span><span class="stat-label">Features</span></div>
+  <div class="stat-item"><span class="stat-val stat-pulse" id="stat-trained">—</span><span class="stat-label">Trained</span></div>
+  <div class="stat-item"><span class="stat-val" id="stat-dataset">—</span><span class="stat-label">Dataset</span></div>
+</div>
+
+<!-- ── Layout ────────────────────────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- Main Panel -->
+  <main class="main-panel">
+
+    <!-- Disclaimer -->
+    <div class="disclaimer" style="margin: 0 0 24px;">
+      <strong>Note:</strong> Optimised for formal news articles (politics, finance, world news).
+      Results for opinion pieces, blogs, viral/trending stories, or non-Western sources may be unreliable.
+      Always verify with a trusted fact-checking source.
+    </div>
+
+    <div class="section-label">Input Article</div>
+
+    <!-- Mode Tabs -->
+    <div class="mode-tabs">
+      <button class="mode-tab active" data-mode="text">Paste Text</button>
+      <button class="mode-tab" data-mode="url">From URL</button>
+      <button class="mode-tab" data-mode="file">Upload .txt</button>
+      <button class="mode-tab" data-mode="batch">Batch Mode</button>
+    </div>
+
+    <!-- Text Input -->
+    <div class="input-area active" id="area-text">
+      <textarea id="text-input" placeholder="Paste a news article here to analyze…" maxlength="50000"></textarea>
+      <div class="char-counter" id="char-counter">0 / 50,000 chars</div>
+    </div>
+
+    <!-- URL Input -->
+    <div class="input-area" id="area-url">
+      <div class="url-input-wrap">
+        <input type="url" class="url-input" id="url-input" placeholder="https://www.example.com/news/article…" />
+      </div>
+      <div class="char-counter" style="margin-top:8px;">Paste any news article URL — the article will be fetched and analyzed automatically.</div>
+    </div>
+
+    <!-- File Upload -->
+    <div class="input-area" id="area-file">
+      <div class="file-drop" id="file-drop">
+        <input type="file" id="file-input" accept=".txt" />
+        <div class="file-drop-icon">📄</div>
+        <div class="file-drop-text">Drop a .txt file here or click to browse</div>
+        <div class="file-drop-name" id="file-name"></div>
+      </div>
+    </div>
+
+    <!-- Batch Mode -->
+    <div class="input-area" id="area-batch">
+      <div class="batch-info">
+        Enter up to 20 articles, one per line. Each line = one article.<br/>
+        Batch mode returns predictions without SHAP plots for speed.
+      </div>
+      <textarea id="batch-input" style="min-height:220px"
+        placeholder="Article 1 text here…&#10;Article 2 text here…&#10;Article 3 text here…"></textarea>
+    </div>
+
+    <!-- Actions -->
+    <div class="action-row">
+      <button class="btn-analyze" id="btn-analyze"><span>Analyze Article</span></button>
+      <button class="btn-clear" id="btn-clear">Clear</button>
+    </div>
+
+    <div class="loading-bar" id="loading-bar"><div class="loading-bar-fill"></div></div>
+    <div class="loading-text" id="loading-text">⏳ Fetching &amp; classifying…</div>
+
+    <!-- ── Single Result ────────────────────────────────────────────── -->
+    <div class="result-section" id="result-section">
+
+      <div class="section-label" style="margin-top:0">Analysis Result</div>
+
+      <!-- Verdict Banner -->
+      <div class="verdict-banner" id="verdict-banner">
+        <div class="verdict-label-wrap">
+          <div class="verdict-label" id="verdict-label">—</div>
+          <div class="verdict-meta" id="verdict-meta"></div>
+        </div>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            <svg viewBox="0 0 100 100" width="100" height="100">
+              <circle class="gauge-bg" cx="50" cy="50" r="42" />
+              <circle class="gauge-fill" id="gauge-fill" cx="50" cy="50" r="42" stroke-dasharray="0 264" />
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-pct" id="gauge-pct">—</div>
+              <div class="gauge-sublabel">Conf.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Prob Bars -->
+      <div class="prob-bars">
+        <div class="prob-bar-wrap">
+          <div class="prob-bar-label"><span>Real</span><span id="prob-real-val">—</span></div>
+          <div class="prob-bar-track"><div class="prob-bar-fill real" id="bar-real" style="width:0%"></div></div>
+        </div>
+        <div class="prob-bar-wrap">
+          <div class="prob-bar-label"><span>Fake</span><span id="prob-fake-val">—</span></div>
+          <div class="prob-bar-track"><div class="prob-bar-fill fake" id="bar-fake" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <!-- Style Signals -->
+      <div class="style-signals" id="style-signals">
+        <div class="signal-chip"><div class="signal-val" id="sig-words">—</div><div class="signal-name">Words</div></div>
+        <div class="signal-chip"><div class="signal-val" id="sig-chars">—</div><div class="signal-name">Chars</div></div>
+        <div class="signal-chip"><div class="signal-val" id="sig-caps">—</div><div class="signal-name">Caps %</div></div>
+        <div class="signal-chip"><div class="signal-val" id="sig-exclaim">—</div><div class="signal-name">Exclamations</div></div>
+      </div>
+
+      <!-- ── Summary & Explanation Cards ───────────────────────────── -->
+      <div class="info-cards" id="info-cards" style="display:none">
+        <div class="info-card summary">
+          <div class="info-card-header">📰 Article Summary</div>
+          <div class="info-card-body" id="card-summary">—</div>
+        </div>
+        <div class="info-card explanation">
+          <div class="info-card-header">🔍 Why this verdict?</div>
+          <div class="info-card-body" id="card-explanation">—</div>
+        </div>
+      </div>
+
+      <!-- SHAP Plot (shown when SHAP is re-enabled) -->
+      <div class="shap-section" id="shap-section" style="display:none">
+        <div class="section-label" style="margin-top:24px">SHAP Explanation</div>
+        <img id="shap-img" src="" alt="SHAP force plot" />
+      </div>
+
+    </div>
+
+    <!-- ── Batch Results ───────────────────────────────────────────── -->
+    <div class="result-section batch-results" id="batch-result-section">
+      <div class="section-label" style="margin-top:0">Batch Results</div>
+      <div id="batch-rows"></div>
+    </div>
+
+  </main>
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Recent Predictions <span id="hist-count" style="color:#444">(0)</span></span>
+      <a class="btn-export" href="/export" id="btn-export" target="_blank">↓ CSV</a>
+    </div>
+    <div id="history-list">
+      <div class="history-empty">No predictions yet —<br/>analyze an article<br/>to get started.</div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- Error Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ── State ────────────────────────────────────────────────────────────── */
+let currentMode  = 'text';
+let selectedFile = null;
+const $ = id => document.getElementById(id);
+
+/* ── On load: fetch /stats ────────────────────────────────────────────── */
+(async () => {
+  try {
+    const r = await fetch('/stats');
+    if (!r.ok) return;
+    const d = await r.json();
+    $('stat-accuracy').textContent = d.accuracy        ? d.accuracy + '%'          : '—';
+    $('stat-auc').textContent      = d.roc_auc         || '—';
+    $('stat-cv').textContent       = d.cv_accuracy_mean ? d.cv_accuracy_mean + '%' : '—';
+    $('stat-features').textContent = d.n_features       ? (d.n_features / 1000).toFixed(0) + 'K' : '—';
+    $('stat-trained').textContent  = d.trained_on       ? d.trained_on.split(' ')[0] : '—';
+    $('stat-dataset').textContent  = d.dataset         || '—';
+    $('masthead-sub').textContent  = `v2.3 · Accuracy ${d.accuracy || '—'}% · ROC-AUC ${d.roc_auc || '—'}`;
+  } catch {}
+})();
+
+/* ── Load history ─────────────────────────────────────────────────────── */
+(async () => {
+  try {
+    const r = await fetch('/history');
+    if (!r.ok) return;
+    const items = await r.json();
+    items.forEach(addHistoryItem);
+  } catch {}
+})();
+
+/* ── Mode Tabs ────────────────────────────────────────────────────────── */
+document.querySelectorAll('.mode-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.input-area').forEach(a => a.classList.remove('active'));
+    tab.classList.add('active');
+    currentMode = tab.dataset.mode;
+    $('area-' + currentMode).classList.add('active');
+    hideResult();
+  });
+});
+
+/* ── Char counter ─────────────────────────────────────────────────────── */
+$('text-input').addEventListener('input', () => {
+  const n  = $('text-input').value.length;
+  const el = $('char-counter');
+  el.textContent = n.toLocaleString() + ' / 50,000 chars';
+  el.className   = 'char-counter' + (n > 48000 ? ' error' : n > 40000 ? ' warn' : '');
+});
+
+/* ── File drop ────────────────────────────────────────────────────────── */
+const drop = $('file-drop');
+$('file-input').addEventListener('change', e => {
+  selectedFile = e.target.files[0];
+  $('file-name').textContent = selectedFile ? '📎 ' + selectedFile.name : '';
+});
+drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('drag-over'); });
+drop.addEventListener('dragleave', ()  => drop.classList.remove('drag-over'));
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('drag-over');
+  selectedFile = e.dataTransfer.files[0];
+  $('file-name').textContent = selectedFile ? '📎 ' + selectedFile.name : '';
+});
+
+/* ── Clear ────────────────────────────────────────────────────────────── */
+$('btn-clear').addEventListener('click', () => {
+  $('text-input').value  = '';
+  $('url-input').value   = '';
+  $('batch-input').value = '';
+  $('char-counter').textContent = '0 / 50,000 chars';
+  $('char-counter').className   = 'char-counter';
+  selectedFile = null;
+  $('file-name').textContent = '';
+  hideResult();
+});
+
+/* ── Analyze ──────────────────────────────────────────────────────────── */
+$('btn-analyze').addEventListener('click', () => {
+  if (currentMode === 'batch') runBatch();
+  else                         runSingle();
+});
+
+/* ── Single prediction ────────────────────────────────────────────────── */
+async function runSingle() {
+  setLoading(true);
+  hideResult();
+  try {
+    let result;
+    if (currentMode === 'url') {
+      const url = $('url-input').value.trim();
+      if (!url) { showToast('Please enter a URL.'); setLoading(false); return; }
+      const r = await fetch('/predict/url', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      result = await r.json();
+      if (!r.ok) { showToast(result.error || 'Error fetching URL.'); setLoading(false); return; }
+
+    } else if (currentMode === 'file') {
+      if (!selectedFile) { showToast('Please upload a .txt file.'); setLoading(false); return; }
+      const fd = new FormData();
+      fd.append('file', selectedFile);
+      const r = await fetch('/predict', { method: 'POST', body: fd });
+      result = await r.json();
+      if (!r.ok) { showToast(result.error || 'Prediction failed.'); setLoading(false); return; }
+
+    } else {
+      const text = $('text-input').value.trim();
+      if (!text) { showToast('Please paste some article text.'); setLoading(false); return; }
+      const fd = new FormData();
+      fd.append('text', text);
+      const r = await fetch('/predict', { method: 'POST', body: fd });
+      result = await r.json();
+      if (!r.ok) { showToast(result.error || 'Prediction failed.'); setLoading(false); return; }
+    }
+
+    renderResult(result);
+    addHistoryItem({
+      id: result.id, prediction: result.prediction,
+      confidence: result.confidence, snippet: result.snippet, timestamp: result.timestamp,
+    });
+
+  } catch (e) {
+    showToast('Network error — is the server running?');
+  } finally {
+    setLoading(false);
+  }
+}
+
+/* ── Batch prediction ─────────────────────────────────────────────────── */
+async function runBatch() {
+  const lines = $('batch-input').value.split('\n').map(l => l.trim()).filter(l => l.length > 49);
+  if (!lines.length) { showToast('No valid articles (each must be 50+ chars).'); return; }
+  if (lines.length > 20) { showToast('Batch limit is 20 articles.'); return; }
+  setLoading(true);
+  $('result-section').classList.remove('visible');
+  $('batch-result-section').classList.remove('visible');
+  try {
+    const r = await fetch('/predict/batch', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ articles: lines }),
+    });
+    const data = await r.json();
+    if (!r.ok) { showToast(data.error || 'Batch error.'); return; }
+    renderBatch(data.results, lines);
+  } catch {
+    showToast('Network error.');
+  } finally {
+    setLoading(false);
+  }
+}
+
+/* ── Render result ────────────────────────────────────────────────────── */
+function renderResult(d) {
+  const pred    = d.prediction.toLowerCase().replace(' ', '');  // "fake","real","uncertain","notnews"
+  const banner  = $('verdict-banner');
+  const gaugeFill = $('gauge-fill');
+  const gaugePct  = $('gauge-pct');
+
+  // Verdict banner class
+  banner.className = 'verdict-banner ' + pred;
+  $('verdict-label').textContent = d.prediction;
+  $('verdict-meta').innerHTML    = `ID: ${d.id}  ·  ${d.timestamp}` +
+    (d.source_url ? `<br/>${d.source_url.slice(0, 60)}…` : '');
+
+  // Gauge colour by verdict
+  const gaugeColor = pred === 'fake' ? '#c0392b' : pred === 'real' ? '#1a7a4a' : pred === 'uncertain' ? '#b8973a' : '#555';
+  const pct = d.confidence / 100;
+  gaugeFill.style.strokeDasharray = `${pct * 264} 264`;
+  gaugeFill.style.stroke = gaugeColor;
+  gaugePct.textContent   = d.confidence + '%';
+  gaugePct.style.color   = gaugeColor;
+
+  // Prob bars
+  $('prob-real-val').textContent = d.prob_real + '%';
+  $('prob-fake-val').textContent = d.prob_fake + '%';
+  $('bar-real').style.width      = d.prob_real + '%';
+  $('bar-fake').style.width      = d.prob_fake + '%';
+
+  // Style signals
+  if (d.stats) {
+    $('sig-words').textContent   = d.stats.word_count?.toLocaleString()  || '—';
+    $('sig-chars').textContent   = d.stats.char_count?.toLocaleString()  || '—';
+    $('sig-caps').textContent    = (d.stats.caps_ratio || 0) + '%';
+    $('sig-exclaim').textContent = d.stats.exclaim_count ?? '—';
+  }
+
+  // Summary & Explanation
+  if (d.summary || d.explanation) {
+    $('info-cards').style.display = 'flex';
+    $('card-summary').textContent     = d.summary     || 'No summary available for short texts.';
+    $('card-explanation').textContent = d.explanation || '—';
+    // Colour the explanation card border to match verdict
+    const expCard = document.querySelector('.info-card.explanation');
+    expCard.style.borderLeftColor = gaugeColor;
+  } else {
+    $('info-cards').style.display = 'none';
+  }
+
+  // SHAP
+  if (d.shap_img) {
+    $('shap-img').src = 'data:image/png;base64,' + d.shap_img;
+    $('shap-section').style.display = 'block';
+  } else {
+    $('shap-section').style.display = 'none';
+  }
+
+  $('result-section').classList.add('visible');
+  $('result-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/* ── Render batch results ─────────────────────────────────────────────── */
+function renderBatch(results, lines) {
+  const container = $('batch-rows');
+  container.innerHTML = '';
+  results.forEach((r, i) => {
+    const isFake = r.prediction === 'FAKE';
+    const row    = document.createElement('div');
+    row.className = 'batch-row';
+    row.innerHTML = `
+      <span class="batch-index">#${i + 1}</span>
+      <span class="batch-snippet">${(lines[i] || '').slice(0, 80)}…</span>
+      <span class="batch-verdict ${isFake ? 'fake' : 'real'}">${r.prediction}</span>
+      <span class="batch-conf">${r.confidence}%</span>`;
+    container.appendChild(row);
+  });
+  $('batch-result-section').classList.add('visible');
+  $('batch-result-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/* ── Add history item ─────────────────────────────────────────────────── */
+function addHistoryItem(item) {
+  const list  = $('history-list');
+  const empty = list.querySelector('.history-empty');
+  if (empty) empty.remove();
+
+  const pred = item.prediction.toLowerCase().replace(' ', '');
+  const div  = document.createElement('div');
+  div.className = 'history-item';
+  div.innerHTML = `
+    <div class="history-header">
+      <span class="history-verdict ${pred}">${item.prediction}</span>
+      <span class="history-time">${item.timestamp}</span>
+    </div>
+    <div class="history-snippet">${item.snippet}</div>
+    <div class="history-conf">Confidence: ${item.confidence}%</div>`;
+  list.insertBefore(div, list.firstChild);
+
+  const count = list.querySelectorAll('.history-item').length;
+  $('hist-count').textContent = '(' + count + ')';
+}
+
+/* ── Loading state ────────────────────────────────────────────────────── */
+function setLoading(on) {
+  $('btn-analyze').disabled = on;
+  $('loading-bar').classList.toggle('active', on);
+  $('loading-text').classList.toggle('active', on);
+}
+
+/* ── Hide result ──────────────────────────────────────────────────────── */
+function hideResult() {
+  $('result-section').classList.remove('visible');
+  $('batch-result-section').classList.remove('visible');
+}
+
+/* ── Toast ────────────────────────────────────────────────────────────── */
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+/* ── Enter key on URL input ───────────────────────────────────────────── */
+$('url-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') $('btn-analyze').click();
+});
+</script>
+</body>
+</html>
