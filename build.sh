@@ -6,6 +6,5 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 echo "==> Downloading NLTK data..."
-python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt')"
-
+python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt'); nltk.download('wordnet'); nltk.download('punkt_tab')"
 echo "==> Build complete."
