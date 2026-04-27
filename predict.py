@@ -10,7 +10,9 @@ Usage:
 import argparse
 import joblib
 import os
-from data_utils import preprocess_text, fetch_article_from_url
+import pandas as pd
+import scipy.sparse as sp
+from data_utils import preprocess_text, fetch_article_from_url, extract_extra_features
 
 MODEL_PATH = "outputs/xgb_model.pkl"
 TFIDF_PATH = "outputs/tfidf_vectorizer.pkl"
@@ -26,7 +28,9 @@ def load_model():
 
 def predict(text: str, model, tfidf) -> dict:
     clean = preprocess_text(text)
-    vec   = tfidf.transform([clean])
+    tfidf_vec = tfidf.transform([clean])
+    extra_vec = sp.csr_matrix(extract_extra_features(pd.Series([text])))
+    vec       = sp.hstack([tfidf_vec, extra_vec], format="csr")
     label = model.predict(vec)[0]
     prob  = model.predict_proba(vec)[0]
 
