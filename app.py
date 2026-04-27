@@ -202,8 +202,8 @@ import scipy.sparse as sp
 def build_feature_vector(text: str):
     clean     = preprocess_text(text)
     tfidf_vec = tfidf.transform([clean])
-    extra     = extract_extra_features(pd.Series([text]))
-    return tfidf_vec
+    extra_vec = sp.csr_matrix(extract_extra_features(pd.Series([text])))
+    return sp.hstack([tfidf_vec, extra_vec], format="csr")
 
 
 # ── SHAP plot (disabled) ──────────────────────────────────────────────────────
