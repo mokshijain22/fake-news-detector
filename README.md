@@ -2,15 +2,10 @@
 
 A machine learning web app that classifies news articles as **Real**, **Fake**, or **Uncertain** — with an extractive summary and plain-English explanation for every prediction.
 
-🔗 **Live Demo → [fake-news-detector-h1zk.onrender.com](https://fake-news-detector-h1zk.onrender.com/)**
+🔗 **Live Demo → https://fake-news-detector.jainparichay.in/
 
 ---
 
-## Screenshot
-
-> *(Add a screenshot of the app here — drag an image into this README on GitHub)*
-
----
 
 ## Features
 
